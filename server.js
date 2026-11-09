@@ -13,17 +13,13 @@ const VERIFIED_SENDERS = (process.env.VERIFIED_SENDERS || '')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
-if (!API_KEY || API_KEY === 'your_sendgrid_api_key') {
-  console.error('Missing SENDGRID_API_KEY. Copy .env.example to .env and set it.');
-  process.exit(1);
+if (API_KEY && API_KEY !== 'your_sendgrid_api_key') {
+  sgMail.setApiKey(API_KEY);
 }
-if (VERIFIED_SENDERS.length === 0) {
-  console.error('Missing VERIFIED_SENDERS. Add at least one verified sender to .env.');
-  process.exit(1);
-}
-sgMail.setApiKey(API_KEY);
 
 const app = express();
+// Vercel / proxies: needed so rate limiting sees real client IPs.
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -39,7 +35,6 @@ function readBase64(filePath) {
 const LOGO_BASE64 = readBase64(LOGO_PATH);
 const HEADER_BASE64 = readBase64(HEADER_PATH);
 
-// Spam protection: 5 sends per minute and 30 per hour per IP.
 const perMinute = rateLimit({
   windowMs: 60 * 1000,
   limit: 5,
@@ -66,8 +61,6 @@ function publicAssetBase(req) {
   return `${proto}://${host}`;
 }
 
-// Public HTTPS URLs → images show, no attachment chips (best for Gmail).
-// Otherwise embed via Content-ID so the header still renders when developing locally.
 function resolveEmailAssets(req) {
   const base = publicAssetBase(req);
   if (base) {
@@ -105,6 +98,19 @@ function resolveEmailAssets(req) {
 }
 
 app.post('/api/send-email', perMinute, perHour, async (req, res) => {
+  if (!API_KEY || API_KEY === 'your_sendgrid_api_key') {
+    return res.status(500).json({
+      success: false,
+      error: 'Server is missing SENDGRID_API_KEY. Set it in the host environment variables.',
+    });
+  }
+  if (VERIFIED_SENDERS.length === 0) {
+    return res.status(500).json({
+      success: false,
+      error: 'Server is missing VERIFIED_SENDERS. Set it in the host environment variables.',
+    });
+  }
+
   const { recipientEmail, senderEmail, recipientName, message, website } = req.body || {};
 
   // Honeypot: real users never fill this hidden field.
@@ -151,7 +157,6 @@ app.post('/api/send-email', perMinute, perHour, async (req, res) => {
       subject,
       text,
       html,
-      // Keep original hrefs on hover; do not rewrite links through SendGrid.
       tracking_settings: {
         click_tracking: { enable: false, enable_text: false },
       },
@@ -162,10 +167,22 @@ app.post('/api/send-email', perMinute, perHour, async (req, res) => {
     await sgMail.send(msg);
     res.json({ success: true, message: 'Email sent.' });
   } catch (err) {
-    // Log details server-side only; never return them to the client.
     console.error('SendGrid error:', err.response ? err.response.body : err.message);
     res.status(502).json({ success: false, error: 'The email could not be sent. Please try again later.' });
   }
 });
 
-app.listen(PORT, () => console.log(`Mailer running at http://localhost:${PORT}`));
+// Local/dev only. On Vercel the platform invokes the exported app — do not exit the process.
+if (require.main === module && !process.env.VERCEL) {
+  if (!API_KEY || API_KEY === 'your_sendgrid_api_key') {
+    console.error('Missing SENDGRID_API_KEY. Copy .env.example to .env and set it.');
+    process.exit(1);
+  }
+  if (VERIFIED_SENDERS.length === 0) {
+    console.error('Missing VERIFIED_SENDERS. Add at least one verified sender to .env.');
+    process.exit(1);
+  }
+  app.listen(PORT, () => console.log(`Mailer running at http://localhost:${PORT}`));
+}
+
+module.exports = app;

@@ -18,10 +18,10 @@ A small web app for sending email through SendGrid. Node.js, Express, vanilla JS
    ```
    SENDGRID_API_KEY=SG.xxxxxxxx
    VERIFIED_SENDERS=support@tokenbricklabs.com
-   PORT=3000
+   PORT=3008
    ```
    `VERIFIED_SENDERS` is a comma-separated allowlist. The server rejects any sender not on it.
-6. Start: `npm start`, then open http://localhost:3000
+6. Start: `npm start`, then open http://localhost:3008
 
 ## Notes
 
