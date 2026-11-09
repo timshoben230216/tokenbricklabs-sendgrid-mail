@@ -1,0 +1,16 @@
+{
+  "name": "sendgrid-mailer",
+  "version": "1.0.0",
+  "description": "Simple email sender web app using Node.js, Express and SendGrid",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@sendgrid/mail": "^8.1.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0"
+  }
+}

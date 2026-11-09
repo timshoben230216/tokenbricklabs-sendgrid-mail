@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenBrickLabs mailer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <form id="mail-form" novalidate>
+    <section class="envelope">
+      <div class="row">
+        <label for="senderEmail">From</label>
+        <input type="email" id="senderEmail" name="senderEmail" value="support@tokenbricklabs.com" placeholder="Verified sender address" required>
+      </div>
+      <div class="row">
+        <label for="recipientEmail">To</label>
+        <input type="email" id="recipientEmail" name="recipientEmail" placeholder="jane@example.com" autocomplete="off" required>
+      </div>
+    </section>
+
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+    <div class="mail-outer">
+      <div class="mail-card">
+        <div class="mail-head">
+          <div class="mail-brand">
+            <img class="mail-logo" src="logo.png" alt="" width="48" height="48">
+            <h1>TokenBrickLabs</h1>
+          </div>
+          <p>Building the Future of Blockchain &amp; Web3</p>
+        </div>
+        <div class="mail-body">
+          <p>Hello <input type="text" id="recipientName" name="recipientName" class="edit-name" placeholder="recipient's name" maxlength="100" aria-label="Recipient's name" required>,</p>
+          <div id="message" class="edit-message" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message" data-placeholder="Type your message here (HTML supported, e.g. &lt;b&gt;bold&lt;/b&gt;)"></div>
+        </div>
+        <div class="mail-sign">
+          Best regards,<br><br>
+          <b>TokenBrickLabs Team</b><br><br>
+          📧 support@tokenbricklabs.com<br>
+          🌐 https://tokenbricklabs.com
+        </div>
+        <div class="mail-foot">
+          © <span id="year"></span> TokenBrick Labs. All rights reserved.<br>
+          Building Secure • Scalable • Future-Ready Blockchain Solutions
+        </div>
+      </div>
+    </div>
+
+    <input type="text" name="website" class="trap" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+    <div class="actions">
+      <button type="submit" id="send"><span class="spinner" aria-hidden="true"></span><span id="send-label">Send</span></button>
+    </div>
+  </form>
+  <script src="script.js"></script>
+</body>
+</html>
