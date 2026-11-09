@@ -16,6 +16,14 @@ const stripHtml = (s) =>
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"');
 
+// Keep original hrefs on hover (avoid SendGrid rewriting individual links).
+function preserveLinkHrefs(html) {
+  return html.replace(/<a\b([^>]*)>/gi, (full, attrs) => {
+    if (/\bclicktracking\s*=/i.test(attrs)) return full;
+    return `<a clicktracking="off"${attrs}>`;
+  });
+}
+
 function formatMessageBody(message) {
   // Keep intentional HTML (e.g. <b>), but always normalize line breaks for email clients.
   let html = HAS_HTML_RE.test(message) ? message : escapeHtml(message);
@@ -36,7 +44,7 @@ function formatMessageBody(message) {
     .replace(/<\/p>/gi, '')
     .replace(/^(<br\s*\/?>)+/i, '');
 
-  return html;
+  return preserveLinkHrefs(html);
 }
 
 function buildEmail(name, message, assets = {}) {

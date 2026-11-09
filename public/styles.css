@@ -76,6 +76,28 @@ form { max-width: 690px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 .mail-sign { padding: 10px 45px 30px; color: #555; font-size: 15px; line-height: 1.8; }
 .mail-foot { background: var(--navy); padding: 25px; text-align: center; color: #aab7cf; font-size: 13px; line-height: 1.7; }
 
+/* Mimics the browser status-bar URL preview for links in the message field. */
+.link-status {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  z-index: 1000;
+  max-width: min(70vw, 42rem);
+  padding: .35rem .65rem;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #1a1a1a;
+  background: #f3f3f3;
+  border: 1px solid #c8c8c8;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 0 6px 0 0;
+  box-shadow: 0 -1px 4px rgba(0,0,0,.08);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.edit-message a { color: var(--blue); }
 .trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 .actions { margin-top: 1.25rem; }
 button { display: flex; align-items: center; justify-content: center; gap: .6rem; width: 100%; padding: .85rem 1rem;

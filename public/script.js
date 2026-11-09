@@ -3,11 +3,48 @@ const button = document.getElementById('send');
 const label = document.getElementById('send-label');
 const notice = document.getElementById('notice');
 const area = document.getElementById('message');
+const linkStatus = document.getElementById('link-status');
 document.getElementById('year').textContent = new Date().getFullYear();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const HAS_HTML_RE = /<\/?[a-z][^>]*>/i;
 const MAX_MESSAGE = 5000;
+
+function linkFromEvent(e) {
+  const node = e.target && e.target.nodeType === 3 ? e.target.parentElement : e.target;
+  if (!node || !node.closest) return null;
+  const a = node.closest('a');
+  return a && area.contains(a) ? a : null;
+}
+
+function showLinkStatus(url) {
+  if (!url) {
+    linkStatus.hidden = true;
+    linkStatus.textContent = '';
+    return;
+  }
+  linkStatus.textContent = url;
+  linkStatus.hidden = false;
+}
+
+// Bottom-left URL preview (browser-style) when hovering links in the message.
+area.addEventListener('mouseover', (e) => {
+  const a = linkFromEvent(e);
+  if (a && a.href) showLinkStatus(a.href);
+});
+area.addEventListener('mouseout', (e) => {
+  const a = linkFromEvent(e);
+  if (!a) return;
+  const next = e.relatedTarget;
+  if (next && a.contains(next)) return;
+  showLinkStatus('');
+});
+area.addEventListener('click', (e) => {
+  const a = linkFromEvent(e);
+  if (!a) return;
+  // Keep editing in place; still allow the status-bar URL preview on hover.
+  e.preventDefault();
+});
 
 function messageText() {
   return (area.innerText || '').replace(/\u00a0/g, ' ').trim();
