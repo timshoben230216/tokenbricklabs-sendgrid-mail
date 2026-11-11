@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const multer = require('multer');
 const sgMail = require('@sendgrid/mail');
 const { buildEmail } = require('./template');
 
@@ -17,8 +18,40 @@ if (API_KEY && API_KEY !== 'your_sendgrid_api_key') {
   sgMail.setApiKey(API_KEY);
 }
 
+const MAX_FILES = 5;
+const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3 MB each (keeps request under Vercel body limits)
+const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+
+const ALLOWED_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+const ALLOWED_EXT = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.pdf', '.doc', '.docx',
+]);
+
+function isAllowedFile(file) {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  return ALLOWED_EXT.has(ext) || ALLOWED_MIME.has(file.mimetype);
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES },
+  fileFilter(req, file, cb) {
+    if (isAllowedFile(file)) return cb(null, true);
+    cb(new Error('Only photos (JPG, PNG, GIF, WebP) and documents (PDF, DOC, DOCX) are allowed.'));
+  },
+});
+
 const app = express();
-// Vercel / proxies: needed so rate limiting sees real client IPs.
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -97,7 +130,62 @@ function resolveEmailAssets(req) {
   };
 }
 
+function safeFilename(name) {
+  return String(name || 'attachment')
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
+    .slice(0, 180) || 'attachment';
+}
+
+function mimeForFile(file) {
+  if (file.mimetype && file.mimetype !== 'application/octet-stream') return file.mimetype;
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const map = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+function toUserAttachments(files) {
+  return (files || []).map((file) => ({
+    content: file.buffer.toString('base64'),
+    filename: safeFilename(file.originalname),
+    type: mimeForFile(file),
+    disposition: 'attachment',
+  }));
+}
+
+function runUpload(req, res) {
+  return new Promise((resolve, reject) => {
+    upload.array('files', MAX_FILES)(req, res, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
 app.post('/api/send-email', perMinute, perHour, async (req, res) => {
+  try {
+    await runUpload(req, res);
+  } catch (err) {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, error: 'Each file must be 3 MB or smaller.' });
+      }
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({ success: false, error: 'You can attach up to 5 files.' });
+      }
+      return res.status(400).json({ success: false, error: 'Could not process the uploaded files.' });
+    }
+    return res.status(400).json({ success: false, error: err.message || 'Invalid file upload.' });
+  }
+
   if (!API_KEY || API_KEY === 'your_sendgrid_api_key') {
     return res.status(500).json({
       success: false,
@@ -121,6 +209,12 @@ app.post('/api/send-email', perMinute, perHour, async (req, res) => {
     if (typeof value !== 'string' || !value.trim()) {
       return res.status(400).json({ success: false, error: 'All fields are required.' });
     }
+  }
+
+  const files = req.files || [];
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+  if (totalBytes > MAX_TOTAL_BYTES) {
+    return res.status(400).json({ success: false, error: 'Total attachment size must be 8 MB or less.' });
   }
 
   const to = recipientEmail.trim();
@@ -149,6 +243,7 @@ app.post('/api/send-email', perMinute, perHour, async (req, res) => {
 
   const assets = resolveEmailAssets(req);
   const { subject, text, html } = buildEmail(name, body, assets);
+  const userAttachments = toUserAttachments(files);
 
   try {
     const msg = {
@@ -161,9 +256,8 @@ app.post('/api/send-email', perMinute, perHour, async (req, res) => {
         click_tracking: { enable: false, enable_text: false },
       },
     };
-    if (assets.attachments && assets.attachments.length) {
-      msg.attachments = assets.attachments;
-    }
+    const attachments = [...(assets.attachments || []), ...userAttachments];
+    if (attachments.length) msg.attachments = attachments;
     await sgMail.send(msg);
     res.json({ success: true, message: 'Email sent.' });
   } catch (err) {

@@ -48,6 +48,19 @@
       </div>
     </div>
 
+    <section class="attach-panel" aria-label="Attachments">
+      <div class="attach-head">
+        <div>
+          <h2>Attachments</h2>
+          <p>Photos or documents (PDF, DOC, DOCX). Up to 5 files, 3 MB each.</p>
+        </div>
+        <label class="attach-btn" for="files">Add files</label>
+        <input type="file" id="files" name="files" multiple hidden
+          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+      </div>
+      <ul id="file-list" class="file-list" hidden></ul>
+    </section>
+
     <input type="text" name="website" class="trap" tabindex="-1" autocomplete="off" aria-hidden="true">
 
     <div class="actions">

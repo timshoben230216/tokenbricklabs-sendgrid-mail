@@ -4,11 +4,20 @@ const label = document.getElementById('send-label');
 const notice = document.getElementById('notice');
 const area = document.getElementById('message');
 const linkStatus = document.getElementById('link-status');
+const fileInput = document.getElementById('files');
+const fileList = document.getElementById('file-list');
 document.getElementById('year').textContent = new Date().getFullYear();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const HAS_HTML_RE = /<\/?[a-z][^>]*>/i;
 const MAX_MESSAGE = 5000;
+const MAX_FILES = 5;
+const MAX_FILE_BYTES = 3 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx']);
+
+/** @type {File[]} */
+let selectedFiles = [];
 
 function linkFromEvent(e) {
   const node = e.target && e.target.nodeType === 3 ? e.target.parentElement : e.target;
@@ -27,7 +36,6 @@ function showLinkStatus(url) {
   linkStatus.hidden = false;
 }
 
-// Bottom-left URL preview (browser-style) when hovering links in the message.
 area.addEventListener('mouseover', (e) => {
   const a = linkFromEvent(e);
   if (a && a.href) showLinkStatus(a.href);
@@ -42,7 +50,6 @@ area.addEventListener('mouseout', (e) => {
 area.addEventListener('click', (e) => {
   const a = linkFromEvent(e);
   if (!a) return;
-  // Keep editing in place; still allow the status-bar URL preview on hover.
   e.preventDefault();
 });
 
@@ -58,13 +65,10 @@ function isMessageEmpty() {
   return !messageText();
 }
 
-// Turn typed/pasted tag text (e.g. <b>hi</b>) into real HTML so formatting is applied.
 function applyEnteredHtml() {
   const text = area.innerText.replace(/\u00a0/g, ' ');
   if (!HAS_HTML_RE.test(text)) return false;
-  // Only reparse when tags are still literal text (escaped in the DOM).
   if (!/&lt;\/?[a-z]/i.test(area.innerHTML)) return false;
-  // Preserve line breaks when converting typed tags into HTML.
   area.innerHTML = text.replace(/\r\n|\r|\n/g, '<br>');
   syncEmptyClass();
   grow();
@@ -86,6 +90,100 @@ function show(type, text) {
   notice.hidden = false;
 }
 
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function fileExt(name) {
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i).toLowerCase() : '';
+}
+
+function isAllowedClientFile(file) {
+  return ALLOWED_EXT.has(fileExt(file.name));
+}
+
+function totalSelectedBytes() {
+  return selectedFiles.reduce((sum, f) => sum + f.size, 0);
+}
+
+function sameFile(a, b) {
+  return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+}
+
+function renderFiles() {
+  fileList.innerHTML = '';
+  if (!selectedFiles.length) {
+    fileList.hidden = true;
+    return;
+  }
+  fileList.hidden = false;
+  selectedFiles.forEach((file, index) => {
+    const li = document.createElement('li');
+    li.className = 'file-item';
+
+    const ext = fileExt(file.name).replace('.', '').toUpperCase() || 'FILE';
+    if (file.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.className = 'file-thumb';
+      img.alt = '';
+      img.src = URL.createObjectURL(file);
+      img.onload = () => URL.revokeObjectURL(img.src);
+      li.appendChild(img);
+    } else {
+      const icon = document.createElement('div');
+      icon.className = 'file-icon';
+      icon.textContent = ext.slice(0, 4);
+      li.appendChild(icon);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'file-meta';
+    meta.innerHTML = `<span class="file-name"></span><span class="file-size"></span>`;
+    meta.querySelector('.file-name').textContent = file.name;
+    meta.querySelector('.file-size').textContent = formatBytes(file.size);
+    li.appendChild(meta);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'file-remove';
+    remove.setAttribute('aria-label', 'Remove ' + file.name);
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => {
+      selectedFiles = selectedFiles.filter((_, i) => i !== index);
+      renderFiles();
+    });
+    li.appendChild(remove);
+    fileList.appendChild(li);
+  });
+}
+
+fileInput.addEventListener('change', () => {
+  const incoming = Array.from(fileInput.files || []);
+  fileInput.value = '';
+  notice.hidden = true;
+
+  for (const file of incoming) {
+    if (!isAllowedClientFile(file)) {
+      return show('error', `"${file.name}" is not allowed. Use photos or PDF/DOC/DOCX.`);
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      return show('error', `"${file.name}" is too large. Each file must be 3 MB or smaller.`);
+    }
+    if (selectedFiles.some((f) => sameFile(f, file))) continue;
+    if (selectedFiles.length >= MAX_FILES) {
+      return show('error', 'You can attach up to 5 files.');
+    }
+    if (totalSelectedBytes() + file.size > MAX_TOTAL_BYTES) {
+      return show('error', 'Total attachment size must be 8 MB or less.');
+    }
+    selectedFiles.push(file);
+  }
+  renderFiles();
+});
+
 let applyTimer = 0;
 function scheduleApply() {
   clearTimeout(applyTimer);
@@ -95,7 +193,6 @@ function scheduleApply() {
 area.addEventListener('input', () => {
   syncEmptyClass();
   grow();
-  // Apply once a full tag like <b>…</b> is present as literal text.
   if (/&lt;\/?[a-z]/i.test(area.innerHTML)) scheduleApply();
 });
 area.addEventListener('focusout', applyEnteredHtml);
@@ -115,16 +212,27 @@ form.addEventListener('submit', async (e) => {
   notice.hidden = true;
   applyEnteredHtml();
 
-  const data = Object.fromEntries(new FormData(form));
-  data.message = messageHtml();
+  const recipientEmail = form.recipientEmail.value;
+  const recipientName = form.recipientName.value;
+  const senderEmail = form.senderEmail.value;
+  const website = form.website.value;
+  const message = messageHtml();
 
-  for (const key of ['recipientEmail', 'recipientName', 'senderEmail']) {
-    if (!data[key] || !data[key].trim()) return show('error', 'Please fill in all fields.');
+  if (!recipientEmail.trim() || !recipientName.trim() || !senderEmail.trim()) {
+    return show('error', 'Please fill in all fields.');
   }
   if (isMessageEmpty()) return show('error', 'Please fill in all fields.');
-  if (messageHtml().length > MAX_MESSAGE) return show('error', 'Message is too long (max 5000 characters).');
-  if (!EMAIL_RE.test(data.recipientEmail.trim())) return show('error', 'Enter a valid recipient email address.');
-  if (!EMAIL_RE.test(data.senderEmail.trim())) return show('error', 'Enter a valid sender email address.');
+  if (message.length > MAX_MESSAGE) return show('error', 'Message is too long (max 5000 characters).');
+  if (!EMAIL_RE.test(recipientEmail.trim())) return show('error', 'Enter a valid recipient email address.');
+  if (!EMAIL_RE.test(senderEmail.trim())) return show('error', 'Enter a valid sender email address.');
+
+  const body = new FormData();
+  body.append('recipientEmail', recipientEmail);
+  body.append('recipientName', recipientName);
+  body.append('senderEmail', senderEmail);
+  body.append('message', message);
+  body.append('website', website);
+  selectedFiles.forEach((file) => body.append('files', file, file.name));
 
   button.disabled = true;
   button.classList.add('loading');
@@ -133,16 +241,17 @@ form.addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body,
     });
     const result = await res.json().catch(() => ({}));
     if (res.ok && result.success) {
-      show('success', 'Email sent.');
+      show('success', selectedFiles.length ? 'Email sent with attachments.' : 'Email sent.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       const sender = form.senderEmail.value;
       form.reset();
       area.innerHTML = '';
+      selectedFiles = [];
+      renderFiles();
       syncEmptyClass();
       grow();
       form.senderEmail.value = sender;
